@@ -1,0 +1,101 @@
+MySQL and R
+August 15, 2011
+By Christopher Bare
+
+inShare
+19
+(This article was first published on Digithead's Lab Notebook, and kindly contributed to R-bloggers)
+Share
+Tweet
+Using MySQL with R is pretty easy, with RMySQL. Here are a few notes to keep me straight on a few things I always get snagged on.
+
+Typically, most folks are going to want to analyze data that’s already in a MySQL database. Being a little bass-ackwards, I often want to go the other way. One reason to do this is to do some analysis in R and make the results available dynamically in a web app, which necessitates writing data from R into a database. As of this writing, INSERT isn’t even mentioned in the RMySQL docs, sadly for me, but it works just fine.
+
+The docs are a bit clearer for RS-DBI, which is the standard R interface to relational databases and of which RMySQL is one implementation.
+
+Opening and closing connections
+
+The best way to close DB connections, like you would do in a finally clause in Java, is to use on.exit, like this:
+
+con <- dbConnect(MySQL(),
+         user="me", password="nuts2u",
+         dbname="my_db", host="localhost")
+on.exit(dbDisconnect(con))
+Building queries
+
+Using sprintf to build the queries feels a little primitive. As far as I can tell, there’s no prepared statements in RMySQL. I don’t suppose SQL-injection is a concern here, but prepared statements might be a little tidier, anyway.
+
+Processing query results
+
+You can process query results row by row, in blocks or all at once. The highly useful function dbGetQuery(con, sql) returns all query results as a data frame. With dbSendQuery, you can get all or partial results with fetch.
+
+con <- dbConnect(MySQL(), user="network_portal", password="monkey2us", dbname=db.name, host="localhost")
+rs <- dbSendQuery(con, "select name from genes limit 10;")
+data <- fetch(rs, n=10)
+huh <- dbHasCompleted(rs)
+dbClearResult(rs)
+dbDisconnect(con)
+If there’s no more results, fetch returns a data frame with 0 columns and 0 rows. dbHasCompleted is supposed to indicate whether there are more records to be fetched, but seems broken. The value of huh in the code above is false, which seems wrong to me.
+
+Retrieving AUTO_INCREMENT IDs
+
+A standard newbie question with MySQL is how to retrieve freshly generated primary keys from AUTO_INCREMENT fields. That’s what MySQL’s LAST_INSERT_ID() is for.
+
+You can retrieve the most recent AUTO_INCREMENT value with the LAST_INSERT_ID() SQL function or the mysql_insert_id() C API function. These functions are connection-specific, so their return values are not affected by another connection which is also performing inserts.
+
+The same works with RMySQL, but there are some traps to watch out for. Let’s say you’re inserting a row into a table of networks. Don’t worry about the specifics. You want to insert related data in another table, so you need the ID of the newly inserted row.
+
+create.network <- function(species.id, network.name, data.source, description) {
+  
+  con <- dbConnect(MySQL(),
+           user="super_schmuck", password="nuts2u",
+           dbname="my_db", host="localhost")
+  on.exit(dbDisconnect(con))
+
+  sql <- sprintf("insert into networks
+                  (species_id, name, data_source, description, created_at)
+                  values (%d, '%s', '%s', '%s', NOW());",
+                 species.id, network.name, data.source, description)
+  rs <- dbSendQuery(con, sql)
+  dbClearResult(rs)
+
+  id <- dbGetQuery(con, "select last_insert_id();")[1,1]
+
+  return(id)
+}
+Don’t forget to clear the result of the insert. If you do, you’ll get 0 from the last_insert_id(). Also, using dbGetQuery for the insert produces an strange error when you go to call last_insert_id:
+
+Error in mysqlExecStatement(conn, statement, ...) : 
+  RS-DBI driver: (could not run statement: Commands out of sync; you can't run this command now)
+Alternatively, you can also combine both SQL statements into one call to dbSendQuery, but, you have to remember to set a flag when you make the connection: client.flag=CLIENT_MULTI_STATEMENTS. Trying to use multiple queries seems not to work with dbGetQuery.
+
+create.network <- function(species.id, network.name, data.source, description) {
+
+  con <- dbConnect(MySQL(),
+           user="super_schmuck", password="nuts2u",
+           dbname="my_db", host="localhost",
+           client.flag=CLIENT_MULTI_STATEMENTS)
+  on.exit(dbDisconnect(con))
+
+  sql <- sprintf("insert into networks
+                  (species_id, name, data_source, description, created_at)
+                  values (%d, '%s', '%s', '%s', NOW());
+                  select last_insert_id();",
+                 species.id, network.name, data.source, description)
+
+  rs <- dbSendQuery(con, sql)
+
+  if (dbMoreResults(con)) {
+    rs <- dbNextResult(con)
+    id <- fetch(rs)[1,1]
+  } else {
+    stop('Error getting last inserted id.')
+  }
+
+  dbClearResult(rs)
+
+  return(id)
+}
+Any effort saved by combining the SQL queries is lost in the extra house-keeping so I prefer the first method.
+
+In spite of these few quirks, RMySQL generally works fine and is pretty straightforward.
