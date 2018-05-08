@@ -44,24 +44,24 @@ xyplot(y ~ x | f * g, data)
 library(lattice)
 library(datasets)
 ## Simple scatterplot
-xyplot(Ozone ~ Wind, data = airquality)5/15
+xyplot(Ozone ~ Wind, data = airquality)
 
 library(datasets)
 library(lattice)
 ## Convert 'Month' to a factor variable
 airquality <- transform(airquality, Month = factor(Month))
-xyplot(Ozone ~ Wind | Month, data = airquality, layout = c(5, 1))6/15
+xyplot(Ozone ~ Wind | Month, data = airquality, layout = c(5, 1))
 
 p <- xyplot(Ozone ~ Wind, data = airquality)  ## Nothing happens!
 print(p)  ## Plot appears
-xyplot(Ozone ~ Wind, data = airquality)  ## Auto-printing8/15
+xyplot(Ozone ~ Wind, data = airquality)  ## Auto-printing
 
 set.seed(10)
 x <- rnorm(100)
 f <- rep(0:1, each = 50)
 y <- x + f - f * x + rnorm(100, sd = 0.5)
 f <- factor(f, labels = c("Group 1", "Group 2"))
-xyplot(y ~ x | f, layout = c(2, 1))  ## Plot with 2 panels10/15
+xyplot(y ~ x | f, layout = c(2, 1))  ## Plot with 2 panels
 
 ## Custom panel function
 xyplot(y ~ x | f, panel = function(x, y, ...) {    
